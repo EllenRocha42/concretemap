@@ -832,3 +832,182 @@ function TelaCPs({obra,nfs,cps,isMobile,onSalvarCP,onExcluirCP,onClose}){
     </div>
   )
 }
+
+// ── PLANTA CANVAS ─────────────────────────────────────────────
+function PlantaCanvas({plantaImg,paintData,activeNF,tool,brushSize,opacity,onUpload,onCanvasReady,onSavePaint,isMobile}){
+  const bgRef=useRef(null),paintRef=useRef(null),wrapperRef=useRef(null)
+  const zoomRef=useRef(1),panRef=useRef({x:0,y:0})
+  const[zoomPct,setZoomPct]=useState(100)
+  const isPainting=useRef(false),isPanning=useRef(false)
+  const lastMouse=useRef({x:0,y:0}),lastPaintPos=useRef(null)
+  const saveTimer=useRef(null)
+  const lastPinch=useRef(null)
+  const CW=1200,CH=700
+
+  useEffect(()=>{if(bgRef.current&&paintRef.current&&onCanvasReady) onCanvasReady(bgRef.current,paintRef.current)},[])
+
+  useEffect(()=>{
+    if(!plantaImg) return
+    const img=new Image()
+    img.onload=()=>{
+      const ctx=bgRef.current?.getContext('2d');if(!ctx) return
+      ctx.clearRect(0,0,CW,CH);ctx.fillStyle='#ffffff';ctx.fillRect(0,0,CW,CH)
+      const sc=Math.min(CW/img.width,CH/img.height)*0.95
+      ctx.drawImage(img,(CW-img.width*sc)/2,(CH-img.height*sc)/2,img.width*sc,img.height*sc)
+    }
+    img.src=plantaImg
+  },[plantaImg])
+
+  useEffect(()=>{
+    if(!paintRef.current) return
+    const ctx=paintRef.current.getContext('2d');ctx.clearRect(0,0,CW,CH)
+    if(!paintData) return
+    const img=new Image();img.onload=()=>ctx.drawImage(img,0,0);img.src=paintData
+  },[paintData])
+
+  function applyT(){
+    if(wrapperRef.current) wrapperRef.current.style.transform=`translate(${panRef.current.x}px,${panRef.current.y}px) scale(${zoomRef.current})`
+    setZoomPct(Math.round(zoomRef.current*100))
+  }
+
+  function scheduleSave(){
+    clearTimeout(saveTimer.current)
+    saveTimer.current=setTimeout(()=>{
+      if(!paintRef.current) return
+      onSavePaint(paintRef.current.toDataURL('image/png'))
+    },1500)
+  }
+
+  function toCanvas(sx,sy){
+    const el=bgRef.current?.parentElement?.parentElement;if(!el) return{x:0,y:0}
+    const r=el.getBoundingClientRect()
+    return{x:(sx-r.left-panRef.current.x)/zoomRef.current,y:(sy-r.top-panRef.current.y)/zoomRef.current}
+  }
+
+  function paintAt(pos){
+    const c=paintRef.current;if(!c) return
+    const ctx=c.getContext('2d')
+    const alpha=Math.round(opacity*255).toString(16).padStart(2,'0')
+    if(tool==='erase'){
+      ctx.globalCompositeOperation='destination-out'
+      ctx.beginPath();ctx.arc(pos.x,pos.y,brushSize*1.5,0,Math.PI*2)
+      ctx.fillStyle='rgba(0,0,0,1)';ctx.fill()
+      ctx.globalCompositeOperation='source-over'
+    } else if(tool==='pen'&&activeNF){
+      ctx.globalCompositeOperation='source-over'
+      ctx.lineCap='round';ctx.lineJoin='round';ctx.lineWidth=brushSize
+      ctx.strokeStyle=(activeNF.cor||'#000')+alpha
+      if(lastPaintPos.current){
+        ctx.beginPath();ctx.moveTo(lastPaintPos.current.x,lastPaintPos.current.y)
+        ctx.lineTo(pos.x,pos.y);ctx.stroke()
+      } else {
+        ctx.beginPath();ctx.arc(pos.x,pos.y,brushSize/2,0,Math.PI*2)
+        ctx.fillStyle=(activeNF.cor||'#000')+alpha;ctx.fill()
+      }
+    }
+    lastPaintPos.current=pos
+  }
+
+  function onMouseDown(e){
+    e.preventDefault();const xy={x:e.clientX,y:e.clientY};lastMouse.current=xy
+    if(tool==='pan'){isPanning.current=true;return}
+    if(tool==='pen'&&!activeNF) return
+    isPainting.current=true;lastPaintPos.current=null;paintAt(toCanvas(xy.x,xy.y))
+  }
+  function onMouseMove(e){
+    e.preventDefault();const xy={x:e.clientX,y:e.clientY}
+    if(isPanning.current){panRef.current={x:panRef.current.x+(xy.x-lastMouse.current.x),y:panRef.current.y+(xy.y-lastMouse.current.y)};lastMouse.current=xy;applyT();return}
+    if(isPainting.current){paintAt(toCanvas(xy.x,xy.y));lastMouse.current=xy}
+  }
+  function onMouseUp(){if(isPainting.current) scheduleSave();isPainting.current=false;isPanning.current=false;lastPaintPos.current=null}
+
+  function onWheel(e){
+    e.preventDefault();const f=e.deltaY<0?1.12:0.9
+    const el=bgRef.current?.parentElement?.parentElement;if(!el) return
+    const r=el.getBoundingClientRect();const mx=e.clientX-r.left,my=e.clientY-r.top
+    const nz=Math.max(0.15,Math.min(8,zoomRef.current*f))
+    panRef.current={x:mx-(mx-panRef.current.x)*(nz/zoomRef.current),y:my-(my-panRef.current.y)*(nz/zoomRef.current)}
+    zoomRef.current=nz;applyT()
+  }
+
+  function onTouchStart(e){
+    e.preventDefault()
+    if(e.touches.length===2){
+      const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY)
+      lastPinch.current={dist:d,zoom:zoomRef.current,cx:(e.touches[0].clientX+e.touches[1].clientX)/2,cy:(e.touches[0].clientY+e.touches[1].clientY)/2}
+      isPainting.current=false;isPanning.current=false;return
+    }
+    const xy={x:e.touches[0].clientX,y:e.touches[0].clientY};lastMouse.current=xy
+    if(tool==='pan'){isPanning.current=true;return}
+    if(tool==='pen'&&!activeNF) return
+    isPainting.current=true;lastPaintPos.current=null;paintAt(toCanvas(xy.x,xy.y))
+  }
+
+  function onTouchMove(e){
+    e.preventDefault()
+    if(e.touches.length===2&&lastPinch.current){
+      const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY)
+      const scale=d/lastPinch.current.dist
+      const nz=Math.max(0.15,Math.min(8,lastPinch.current.zoom*scale))
+      const el=bgRef.current?.parentElement?.parentElement;if(!el) return
+      const r=el.getBoundingClientRect()
+      const mx=lastPinch.current.cx-r.left,my=lastPinch.current.cy-r.top
+      panRef.current={x:mx-(mx-panRef.current.x)*(nz/zoomRef.current),y:my-(my-panRef.current.y)*(nz/zoomRef.current)}
+      zoomRef.current=nz;applyT();return
+    }
+    lastPinch.current=null
+    const xy={x:e.touches[0].clientX,y:e.touches[0].clientY}
+    if(isPanning.current){panRef.current={x:panRef.current.x+(xy.x-lastMouse.current.x),y:panRef.current.y+(xy.y-lastMouse.current.y)};lastMouse.current=xy;applyT();return}
+    if(isPainting.current){paintAt(toCanvas(xy.x,xy.y));lastMouse.current=xy}
+  }
+
+  function onTouchEnd(){
+    if(isPainting.current) scheduleSave()
+    isPainting.current=false;isPanning.current=false;lastPaintPos.current=null;lastPinch.current=null
+  }
+
+  function limpar(){
+    if(!window.confirm('Limpar toda a pintura?')) return
+    paintRef.current?.getContext('2d')?.clearRect(0,0,CW,CH)
+    onSavePaint(paintRef.current.toDataURL('image/png'))
+  }
+
+  if(!plantaImg) return(
+    <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',background:'#f8f7f4'}}>
+      <div style={{textAlign:'center',padding:32,maxWidth:340}}>
+        <div style={{fontSize:56,marginBottom:16}}>🖼️</div>
+        <div style={{fontSize:18,fontWeight:600,color:'#374151',marginBottom:8}}>Carregar planta</div>
+        <div style={{fontSize:13,color:'#6b7280',marginBottom:6}}>Aceita JPG ou PNG</div>
+        <div style={{fontSize:12,color:'#9ca3af',marginBottom:24}}>Salva automaticamente na nuvem</div>
+        <label style={{display:'inline-flex',alignItems:'center',gap:8,padding:'14px 28px',background:'#1D9E75',color:'#fff',borderRadius:12,fontSize:15,cursor:'pointer',fontWeight:600}}>
+          📁 Selecionar imagem
+          <input type="file" accept="image/*" onChange={e=>{const f=e.target.files[0];if(!f) return;const r=new FileReader();r.onload=ev=>onUpload(ev.target.result);r.readAsDataURL(f)}} style={{display:'none'}}/>
+        </label>
+      </div>
+    </div>
+  )
+
+  return(
+    <div style={{flex:1,overflow:'hidden',background:'#e8e5de',position:'relative',cursor:tool==='pan'?'grab':tool==='erase'?'cell':'crosshair',userSelect:'none',touchAction:'none'}}
+      onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
+      onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+      onWheel={onWheel}>
+      {activeNF&&<div style={{position:'absolute',top:10,left:10,zIndex:10,background:activeNF.cor||'#ccc',padding:'5px 14px',borderRadius:8,fontSize:12,fontWeight:700,color:'#333',pointerEvents:'none',boxShadow:'0 2px 8px rgba(0,0,0,.15)'}}>🖌️ NF {activeNF.numero}</div>}
+      {tool==='pan'&&<div style={{position:'absolute',top:10,left:10,zIndex:10,background:'rgba(255,255,255,.9)',padding:'5px 14px',borderRadius:8,fontSize:12,color:'#374151',border:'1px solid #e5e7eb',pointerEvents:'none'}}>✋ {isMobile?'2 dedos = zoom':'Arraste para mover'}</div>}
+      {!activeNF&&tool==='pen'&&<div style={{position:'absolute',top:10,left:10,zIndex:10,background:'rgba(255,255,255,.9)',padding:'5px 14px',borderRadius:8,fontSize:11,color:'#9ca3af',border:'1px solid #e5e7eb',pointerEvents:'none'}}>← Selecione uma NF</div>}
+      <div style={{position:'absolute',top:10,right:10,zIndex:10,display:'flex',gap:4}}>
+        {[['＋',()=>{zoomRef.current=Math.min(8,zoomRef.current*1.2);applyT()}],
+          ['－',()=>{zoomRef.current=Math.max(.15,zoomRef.current*0.83);applyT()}],
+          ['⊡',()=>{zoomRef.current=1;panRef.current={x:0,y:0};applyT()}]].map(([ico,fn])=>(
+          <button key={ico} onClick={fn} style={{width:isMobile?38:30,height:isMobile?38:30,border:'1px solid #e5e7eb',borderRadius:8,background:'rgba(255,255,255,.9)',cursor:'pointer',fontSize:isMobile?18:15,display:'flex',alignItems:'center',justifyContent:'center'}}>{ico}</button>
+        ))}
+        <span style={{padding:'0 8px',background:'rgba(255,255,255,.9)',border:'1px solid #e5e7eb',borderRadius:8,fontSize:11,display:'flex',alignItems:'center',color:'#6b7280',minWidth:46,justifyContent:'center'}}>{zoomPct}%</span>
+        <button onClick={limpar} style={{padding:'0 10px',border:'1px solid #fecaca',borderRadius:8,background:'rgba(255,255,255,.9)',cursor:'pointer',fontSize:isMobile?12:10,color:'#ef4444',display:'flex',alignItems:'center'}}>🗑️</button>
+      </div>
+      <div ref={wrapperRef} style={{position:'absolute',top:0,left:0,width:CW,height:CH,transformOrigin:'0 0',boxShadow:'0 4px 20px rgba(0,0,0,.15)'}}>
+        <canvas ref={bgRef} width={CW} height={CH} style={{position:'absolute',top:0,left:0,pointerEvents:'none'}}/>
+        <canvas ref={paintRef} width={CW} height={CH} style={{position:'absolute',top:0,left:0,pointerEvents:'none'}}/>
+      </div>
+    </div>
+  )
+}
