@@ -519,6 +519,7 @@ function AppInterno({sessao,onLogout}){
                 key={`${currentPav?.id}_${viewMode}`}
                 plantaImg={plantaImg} paintData={paintData} activeNF={activeNF}
                 tool={tool} brushSize={brushSize} opacity={opacity} isMobile={isMobile}
+                nfs={nfs} onSelectNF={setActiveNF}
                 onCanvasReady={(bg,paint)=>{canvasRefs.current={bg,paint}}}
                 onUpload={handleUploadPlanta} onSavePaint={handleSalvarPintura}
               />
@@ -573,7 +574,7 @@ function AppInterno({sessao,onLogout}){
 
       {/* ── BOTTOM NAV MOBILE ── */}
       {isMobile&&(
-        <div style={{height:60,background:'#fff',borderTop:'1px solid #e5e7eb',display:'flex',alignItems:'center',flexShrink:0,zIndex:100}}>
+        <div style={{height:60,background:'#fff',borderTop:'1px solid #e5e7eb',display:'flex',alignItems:'center',flexShrink:0,zIndex:300,position:'relative'}}>
           {[
             {ico:'🏠',label:'Obras',t:'obras'},
             {ico:'📐',label:'Planta',t:'mapa'},
@@ -876,7 +877,7 @@ function TelaCPs({obra,nfs,cps,isMobile,onSalvarCP,onExcluirCP,onClose}){
 }
 
 // ── PLANTA CANVAS ─────────────────────────────────────────────
-function PlantaCanvas({plantaImg,paintData,activeNF,tool,brushSize,opacity,onUpload,onCanvasReady,onSavePaint,isMobile}){
+function PlantaCanvas({plantaImg,paintData,activeNF,tool,brushSize,opacity,onUpload,onCanvasReady,onSavePaint,isMobile,nfs,onSelectNF}){
   const bgRef=useRef(null),paintRef=useRef(null),wrapperRef=useRef(null)
   const zoomRef=useRef(1),panRef=useRef({x:0,y:0})
   const[zoomPct,setZoomPct]=useState(100)
