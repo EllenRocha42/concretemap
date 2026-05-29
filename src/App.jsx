@@ -99,8 +99,12 @@ function useNFs(obraId, pavimentoId){
   async function carregar(){
     if(!obraId){setNfs([]);return}
     let q=supabase.from('nfs').select('*').eq('obra_id',obraId)
-    if(pavimentoId) q=q.eq('pavimento_id',pavimentoId)
-    else q=q.is('pavimento_id',null)
+    if(pavimentoId) {
+      q=q.eq('pavimento_id',pavimentoId)
+    } else {
+      // Sem pavimento selecionado: mostrar NFs sem vínculo OU todas (modo legado)
+      q=q.or('pavimento_id.is.null')
+    }
     const{data}=await q.order('criado_em')
     setNfs(data||[])
   }
@@ -112,7 +116,7 @@ function useNFs(obraId, pavimentoId){
   }
   async function excluir(id){await supabase.from('nfs').delete().eq('id',id);await carregar()}
   useEffect(()=>{carregar()},[obraId,pavimentoId])
-  return{nfs,salvar,excluir,carregar}
+  return{nfs,salvar,excluir}
 }
 
 function useCPs(obraId){
@@ -217,13 +221,12 @@ function AppInterno({sessao,onLogout}){
   const[sidebarOpen,setSidebarOpen]=useState(false)
   const canvasRefs=useRef({bg:null,paint:null})
 
-  const{nfs,salvar:salvarNF,excluir:excluirNFDB,carregar:recarregarNFs}=useNFs(currentObra?.id, currentPav?.id)
+  const{nfs,salvar:salvarNF,excluir:excluirNFDB}=useNFs(currentObra?.id, currentPav?.id)
   const{cps,salvar:salvarCP,excluir:excluirCPDB}=useCPs(currentObra?.id)
   const{plantaImg,paintData,salvarPlanta,carregarPintura,salvarPintura}=usePlanta(currentObra?.id,currentTorre?.id,currentPav?.id)
 
   useEffect(()=>{if(currentPav) carregarPintura(viewMode)},[currentPav,viewMode])
-  // Recarregar NFs quando muda pavimento
-  useEffect(()=>{recarregarNFs&&recarregarNFs()},[currentPav?.id])
+
 
   function showToast(msg,dur=2500){setToast(msg);setTimeout(()=>setToast(''),dur)}
 
