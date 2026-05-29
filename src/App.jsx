@@ -3,7 +3,7 @@ import { supabase, salvarImagemPlanta, salvarPinturaStorage } from './supabase'
 import Dashboard from './Dashboard'
 
 const NF_COLORS=['#FFE44A','#5EE07A','#4DC8F0','#F4A0C0','#FF9B3D','#A78BFA','#F87171','#34D399','#60A5FA','#FBBF24']
-const NF_VAZIA={numero:'',data:new Date().toISOString().slice(0,10),fck:'',slump:'',volume:'',concreteira:'',horario:'',caminhao:'',placa:'',inicio_descarga:'',hora_moldagem:'',fim_descarga:''}
+const NF_VAZIA={numero:'',data:new Date().toISOString().slice(0,10),fck:'',slump:'',volume:'',concreteira:'',horario:'',caminhao:'',placa:'',inicio_descarga:'',hora_moldagem:'',fim_descarga:'',agua_adicionada:'',agua_autorizado_por:''}
 const CP_VAZIA={numero_cp:'',data_moldagem:new Date().toISOString().slice(0,10),hora_moldagem:'',responsavel:'',tipo:'12h',data_ruptura:'',resultado_mpa:'',observacao:''}
 
 // ── HOOK: detectar mobile ──────────────────────────────────────
@@ -108,7 +108,7 @@ function useNFs(obraId, pavimentoId){
     setNfs(data||[])
   }
   async function salvar(f,eid,cor,torreId,pavId){
-    const p={obra_id:obraId,torre_id:torreId||null,pavimento_id:pavId||null,numero:f.numero,data:f.data||null,fck:f.fck,slump:f.slump,volume:f.volume,concreteira:f.concreteira,horario:f.horario||null,caminhao:f.caminhao,placa:f.placa,inicio_descarga:f.inicio_descarga||null,hora_moldagem:f.hora_moldagem||null,fim_descarga:f.fim_descarga||null,cor}
+    const p={obra_id:obraId,torre_id:torreId||null,pavimento_id:pavId||null,numero:f.numero,data:f.data||null,fck:f.fck,slump:f.slump,volume:f.volume,concreteira:f.concreteira,horario:f.horario||null,caminhao:f.caminhao,placa:f.placa,inicio_descarga:f.inicio_descarga||null,hora_moldagem:f.hora_moldagem||null,fim_descarga:f.fim_descarga||null,agua_adicionada:parseFloat(f.agua_adicionada)||null,agua_autorizado_por:f.agua_autorizado_por||null,cor}
     if(eid) await supabase.from('nfs').update(p).eq('id',eid)
     else await supabase.from('nfs').insert(p)
     await carregar()
@@ -252,7 +252,7 @@ function AppInterno({sessao,onLogout}){
   async function handleSalvarPavs(){await salvarPavimentos(editPavs);setModalEditPav(false);showToast('Pavimentos atualizados!')}
 
   function abrirNF(nf=null){
-    if(nf){setEditingNF(nf);setFormNF({numero:nf.numero||'',data:nf.data||new Date().toISOString().slice(0,10),fck:nf.fck||'',slump:nf.slump||'',volume:nf.volume||'',concreteira:nf.concreteira||'',horario:nf.horario||'',caminhao:nf.caminhao||'',placa:nf.placa||'',inicio_descarga:nf.inicio_descarga||'',hora_moldagem:nf.hora_moldagem||'',fim_descarga:nf.fim_descarga||''})}
+    if(nf){setEditingNF(nf);setFormNF({numero:nf.numero||'',data:nf.data||new Date().toISOString().slice(0,10),fck:nf.fck||'',slump:nf.slump||'',volume:nf.volume||'',concreteira:nf.concreteira||'',horario:nf.horario||'',caminhao:nf.caminhao||'',placa:nf.placa||'',inicio_descarga:nf.inicio_descarga||'',hora_moldagem:nf.hora_moldagem||'',fim_descarga:nf.fim_descarga||'',agua_adicionada:nf.agua_adicionada||'',agua_autorizado_por:nf.agua_autorizado_por||''})}
     else{setEditingNF(null);setFormNF({...NF_VAZIA})}
     setModalNF(true)
   }
@@ -294,7 +294,7 @@ function AppInterno({sessao,onLogout}){
     {key:'volume',label:'Volume (m³)'},{key:'horario',label:'Chegada BT'},
     {key:'inicio_descarga',label:'Início desc.'},{key:'hora_moldagem',label:'Moldagem'},
     {key:'fim_descarga',label:'Fim desc.'},{key:'placa',label:'Placa'},
-    {key:'slump',label:'Slump'},{key:'fck',label:'fck'},{key:'concreteira',label:'Concreteira'},
+    {key:'slump',label:'Slump'},{key:'fck',label:'fck'},{key:'concreteira',label:'Concreteira'},{key:'agua_adicionada',label:'Água (L)'},{key:'agua_autorizado_por',label:'Autorizado'},
   ]
 
   if(loading) return <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',fontFamily:'system-ui',flexDirection:'column',gap:12}}><div style={{fontSize:40}}>🏗️</div><div style={{fontSize:14,color:'#6b7280'}}>Carregando...</div></div>
@@ -737,7 +737,7 @@ function AppInterno({sessao,onLogout}){
           <div style={{width:14,height:14,borderRadius:3,background:editingNF.cor||'#eee'}}/><span style={{fontSize:12,fontWeight:500}}>NF {editingNF.numero}</span>
         </div>}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-          {[['Número *','numero','text','Ex: 9445'],['Data','data','date',''],['Concreteira','concreteira','text','Usina'],['Caminhão','caminhao','text','Ex: BT 68'],['Placa','placa','text','ABC-1234'],['fck (MPa)','fck','text','25'],['Slump (cm)','slump','text','22'],['Volume (m³)','volume','text','7,0'],['Chegada BT','horario','time',''],['Início desc.','inicio_descarga','time',''],['Moldagem','hora_moldagem','time',''],['Fim desc.','fim_descarga','time','']].map(([lb,k,t,ph])=>(
+          {[['Número *','numero','text','Ex: 9445'],['Data','data','date',''],['Concreteira','concreteira','text','Usina'],['Caminhão','caminhao','text','Ex: BT 68'],['Placa','placa','text','ABC-1234'],['fck (MPa)','fck','text','25'],['Slump (cm)','slump','text','22'],['Volume (m³)','volume','text','7,0'],['Chegada BT','horario','time',''],['Início desc.','inicio_descarga','time',''],['Moldagem','hora_moldagem','time',''],['Fim desc.','fim_descarga','time',''],['Água adicionada (L)','agua_adicionada','number','Ex: 20'],['Autorizado por','agua_autorizado_por','text','Nome do responsável']].map(([lb,k,t,ph])=>(
             <div key={k}>
               <label style={{fontSize:11,fontWeight:500,color:'#374151',display:'block',marginBottom:4}}>{lb}</label>
               <input type={t} value={formNF[k]||''} onChange={e=>setFormNF(p=>({...p,[k]:e.target.value}))} placeholder={ph}
