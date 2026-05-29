@@ -94,13 +94,25 @@ function useObras(){
   return{obras,loading,carregar,criarObra,editarObra,excluirObra,salvarPavimentos}
 }
 
-function useNFs(obraId){
+function useNFs(obraId, pavimentoId){
   const[nfs,setNfs]=useState([])
-  async function carregar(){if(!obraId){setNfs([]);return};const{data}=await supabase.from('nfs').select('*').eq('obra_id',obraId).order('criado_em');setNfs(data||[])}
-  async function salvar(f,eid,cor){const p={obra_id:obraId,numero:f.numero,data:f.data||null,fck:f.fck,slump:f.slump,volume:f.volume,concreteira:f.concreteira,horario:f.horario||null,caminhao:f.caminhao,placa:f.placa,inicio_descarga:f.inicio_descarga||null,hora_moldagem:f.hora_moldagem||null,fim_descarga:f.fim_descarga||null,cor};if(eid) await supabase.from('nfs').update(p).eq('id',eid);else await supabase.from('nfs').insert(p);await carregar()}
+  async function carregar(){
+    if(!obraId){setNfs([]);return}
+    let q=supabase.from('nfs').select('*').eq('obra_id',obraId)
+    if(pavimentoId) q=q.eq('pavimento_id',pavimentoId)
+    else q=q.is('pavimento_id',null)
+    const{data}=await q.order('criado_em')
+    setNfs(data||[])
+  }
+  async function salvar(f,eid,cor,torreId,pavId){
+    const p={obra_id:obraId,torre_id:torreId||null,pavimento_id:pavId||null,numero:f.numero,data:f.data||null,fck:f.fck,slump:f.slump,volume:f.volume,concreteira:f.concreteira,horario:f.horario||null,caminhao:f.caminhao,placa:f.placa,inicio_descarga:f.inicio_descarga||null,hora_moldagem:f.hora_moldagem||null,fim_descarga:f.fim_descarga||null,cor}
+    if(eid) await supabase.from('nfs').update(p).eq('id',eid)
+    else await supabase.from('nfs').insert(p)
+    await carregar()
+  }
   async function excluir(id){await supabase.from('nfs').delete().eq('id',id);await carregar()}
-  useEffect(()=>{carregar()},[obraId])
-  return{nfs,salvar,excluir}
+  useEffect(()=>{carregar()},[obraId,pavimentoId])
+  return{nfs,salvar,excluir,carregar}
 }
 
 function useCPs(obraId){
@@ -205,11 +217,13 @@ function AppInterno({sessao,onLogout}){
   const[sidebarOpen,setSidebarOpen]=useState(false)
   const canvasRefs=useRef({bg:null,paint:null})
 
-  const{nfs,salvar:salvarNF,excluir:excluirNFDB}=useNFs(currentObra?.id)
+  const{nfs,salvar:salvarNF,excluir:excluirNFDB,carregar:recarregarNFs}=useNFs(currentObra?.id, currentPav?.id)
   const{cps,salvar:salvarCP,excluir:excluirCPDB}=useCPs(currentObra?.id)
   const{plantaImg,paintData,salvarPlanta,carregarPintura,salvarPintura}=usePlanta(currentObra?.id,currentTorre?.id,currentPav?.id)
 
   useEffect(()=>{if(currentPav) carregarPintura(viewMode)},[currentPav,viewMode])
+  // Recarregar NFs quando muda pavimento
+  useEffect(()=>{recarregarNFs&&recarregarNFs()},[currentPav?.id])
 
   function showToast(msg,dur=2500){setToast(msg);setTimeout(()=>setToast(''),dur)}
 
@@ -243,7 +257,7 @@ function AppInterno({sessao,onLogout}){
   async function handleSalvarNF(){
     if(!formNF.numero.trim()){showToast('Informe o número da NF');return}
     const cor=editingNF?editingNF.cor:NF_COLORS[nfs.length%NF_COLORS.length]
-    await salvarNF(formNF,editingNF?.id,cor)
+    await salvarNF(formNF,editingNF?.id,cor,currentTorre?.id,currentPav?.id)
     setModalNF(false);setEditingNF(null)
     showToast(editingNF?'NF atualizada!':'NF cadastrada!')
   }
@@ -515,14 +529,53 @@ function AppInterno({sessao,onLogout}){
               </div>
 
               {/* CANVAS — ocupa todo espaço restante */}
-              <PlantaCanvas
+              {/* Seletor de pavimento mobile quando nenhum pav selecionado */}
+              {isMobile&&!currentPav&&(
+                <div style={{flex:1,overflowY:'auto',padding:16,background:'#f8f7f4'}}>
+                  <div style={{fontSize:14,fontWeight:600,color:'#374151',marginBottom:4}}>{currentObra?.nome}</div>
+                  <div style={{fontSize:12,color:'#9ca3af',marginBottom:16}}>Selecione uma torre e pavimento</div>
+                  {(currentObra?.torres||[]).map(t=>(
+                    <div key={t.id} style={{marginBottom:12}}>
+                      <div style={{fontSize:12,fontWeight:600,color:'#6b7280',marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
+                        🏢 {t.nome}
+                      </div>
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                        {(t.pavimentos||[]).map(p=>(
+                          <button key={p.id}
+                            onClick={()=>{setCurrentTorre(t);setCurrentPav(p)}}
+                            style={{padding:'12px 10px',border:'1px solid #e5e7eb',borderRadius:10,background:'#fff',cursor:'pointer',fontSize:13,fontWeight:500,color:'#374151',fontFamily:'inherit',display:'flex',alignItems:'center',gap:8,textAlign:'left'}}>
+                            {p.tipo==='especial'?'🔲':'📐'} {p.nome}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {(!isMobile||currentPav)&&<PlantaCanvas
                 key={`${currentPav?.id}_${viewMode}`}
                 plantaImg={plantaImg} paintData={paintData} activeNF={activeNF}
                 tool={tool} brushSize={brushSize} opacity={opacity} isMobile={isMobile}
-                nfs={nfs} onSelectNF={setActiveNF}
                 onCanvasReady={(bg,paint)=>{canvasRefs.current={bg,paint}}}
                 onUpload={handleUploadPlanta} onSavePaint={handleSalvarPintura}
-              />
+              />}
+              {/* Painel NFs mobile — FORA do canvas para receber toques */}
+              {isMobile&&currentPav&&nfs&&nfs.length>0&&(
+                <div style={{position:'absolute',bottom:0,left:0,right:0,zIndex:500,background:'rgba(255,255,255,.98)',borderTop:'1px solid #e5e7eb',padding:'10px 12px 12px',boxShadow:'0 -4px 20px rgba(0,0,0,.12)'}}>
+                  <div style={{fontSize:10,color:'#9ca3af',marginBottom:8,fontWeight:600,letterSpacing:'.04em'}}>SELECIONE UMA NF PARA PINTAR</div>
+                  <div style={{display:'flex',gap:8,overflowX:'auto',paddingBottom:2}}>
+                    {nfs.map(nf=>(
+                      <button key={nf.id}
+                        onClick={(e)=>{e.stopPropagation();setActiveNF(activeNF?.id===nf.id?null:nf)}}
+                        style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,padding:'10px 16px',borderRadius:12,border:`2.5px solid ${activeNF?.id===nf.id?nf.cor||'#1D9E75':'#e5e7eb'}`,background:activeNF?.id===nf.id?(nf.cor||'#1D9E75')+'33':'#fff',cursor:'pointer',flexShrink:0,minWidth:80,fontFamily:'inherit',touchAction:'manipulation',WebkitTapHighlightColor:'transparent'}}>
+                        <div style={{width:20,height:20,borderRadius:5,background:nf.cor||'#ccc',border:'1px solid rgba(0,0,0,.1)'}}/>
+                        <span style={{fontSize:12,fontWeight:activeNF?.id===nf.id?700:500,color:activeNF?.id===nf.id?'#111827':'#6b7280',whiteSpace:'nowrap'}}>NF {nf.numero}</span>
+                        <span style={{fontSize:9,color:activeNF?.id===nf.id?'#1D9E75':'#9ca3af',fontWeight:activeNF?.id===nf.id?700:400}}>{activeNF?.id===nf.id?'✓ ATIVA':nf.volume+'m³'}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
