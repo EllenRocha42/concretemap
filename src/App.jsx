@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { supabase } from './supabase'
+import { supabase, salvarImagemPlanta, salvarPinturaStorage } from './supabase'
 import Dashboard from './Dashboard'
 
 const NF_COLORS=['#FFE44A','#5EE07A','#4DC8F0','#F4A0C0','#FF9B3D','#A78BFA','#F87171','#34D399','#60A5FA','#FBBF24']
@@ -114,10 +114,52 @@ function useCPs(obraId){
 
 function usePlanta(obraId,torreId,pavId){
   const[plantaImg,setPlantaImg]=useState(null);const[paintData,setPaintData]=useState(null)
-  async function carregarPlanta(){if(!pavId){setPlantaImg(null);return};const{data}=await supabase.from('plantas').select('imagem_data').eq('pavimento_id',pavId).single();if(data?.imagem_data){setPlantaImg(data.imagem_data);return};const{data:d2}=await supabase.from('plantas').select('imagem_data').eq('obra_id',obraId).limit(1).single();setPlantaImg(d2?.imagem_data||null)}
-  async function salvarPlanta(url){if(!pavId||!obraId||!torreId) return;await supabase.from('plantas').upsert({obra_id:obraId,torre_id:torreId,pavimento_id:pavId,imagem_data:url,atualizado_em:new Date().toISOString()},{onConflict:'pavimento_id'});setPlantaImg(url)}
-  async function carregarPintura(vm){if(!pavId){setPaintData(null);return};const{data}=await supabase.from('pinturas').select('imagem_data').eq('pavimento_id',pavId).eq('view_mode',vm).single();setPaintData(data?.imagem_data||null)}
-  async function salvarPintura(url,vm){if(!pavId) return;await supabase.from('pinturas').upsert({pavimento_id:pavId,view_mode:vm,imagem_data:url,atualizado_em:new Date().toISOString()},{onConflict:'pavimento_id, view_mode'});setPaintData(url)}
+
+  async function carregarPlanta(){
+    if(!pavId){setPlantaImg(null);return}
+    // Tenta planta específica do pavimento
+    const{data}=await supabase.from('plantas').select('imagem_url,imagem_data').eq('pavimento_id',pavId).single()
+    if(data?.imagem_url){setPlantaImg(data.imagem_url);return}
+    if(data?.imagem_data){setPlantaImg(data.imagem_data);return}
+    // Fallback: planta de outro pavimento da mesma obra
+    const{data:d2}=await supabase.from('plantas').select('imagem_url,imagem_data').eq('obra_id',obraId).not('imagem_url','is',null).limit(1).single()
+    if(d2?.imagem_url){setPlantaImg(d2.imagem_url);return}
+    const{data:d3}=await supabase.from('plantas').select('imagem_url,imagem_data').eq('obra_id',obraId).limit(1).single()
+    setPlantaImg(d3?.imagem_url||d3?.imagem_data||null)
+  }
+
+  async function salvarPlanta(dataUrl){
+    if(!pavId||!obraId||!torreId) return
+    // Upload para Storage e pegar URL pública
+    const publicUrl = await salvarImagemPlanta(pavId, dataUrl)
+    const urlParaSalvar = publicUrl || dataUrl // fallback para base64 se storage falhar
+    await supabase.from('plantas').upsert({
+      obra_id:obraId,torre_id:torreId,pavimento_id:pavId,
+      imagem_url: publicUrl||null,
+      imagem_data: publicUrl?null:dataUrl, // só salva base64 se storage falhar
+      atualizado_em:new Date().toISOString()
+    },{onConflict:'pavimento_id'})
+    setPlantaImg(urlParaSalvar)
+  }
+
+  async function carregarPintura(vm){
+    if(!pavId){setPaintData(null);return}
+    const{data}=await supabase.from('pinturas').select('imagem_url,imagem_data').eq('pavimento_id',pavId).eq('view_mode',vm).single()
+    setPaintData(data?.imagem_url||data?.imagem_data||null)
+  }
+
+  async function salvarPintura(dataUrl,vm){
+    if(!pavId) return
+    const publicUrl = await salvarPinturaStorage(pavId, vm, dataUrl)
+    await supabase.from('pinturas').upsert({
+      pavimento_id:pavId,view_mode:vm,
+      imagem_url: publicUrl||null,
+      imagem_data: publicUrl?null:dataUrl,
+      atualizado_em:new Date().toISOString()
+    },{onConflict:'pavimento_id, view_mode'})
+    setPaintData(publicUrl||dataUrl)
+  }
+
   useEffect(()=>{carregarPlanta()},[pavId])
   return{plantaImg,paintData,salvarPlanta,carregarPintura,salvarPintura}
 }
