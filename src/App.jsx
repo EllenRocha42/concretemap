@@ -98,15 +98,13 @@ function useNFs(obraId, pavimentoId){
   const[nfs,setNfs]=useState([])
   async function carregar(){
     if(!obraId){setNfs([]);return}
-    let q=supabase.from('nfs').select('*').eq('obra_id',obraId)
-    if(pavimentoId) {
-      // Mostrar APENAS as NFs deste pavimento
-      q=q.eq('pavimento_id',pavimentoId)
-    } else {
-      // Sem pavimento selecionado: não mostrar nada
-      setNfs([]);return
-    }
-    const{data}=await q.order('criado_em')
+    if(!pavimentoId){setNfs([]);return}
+    const{data}=await supabase
+      .from('nfs')
+      .select('*')
+      .eq('obra_id',obraId)
+      .eq('pavimento_id',pavimentoId)
+      .order('criado_em')
     setNfs(data||[])
   }
   async function salvar(f,eid,cor,torreId,pavId){
