@@ -100,10 +100,11 @@ function useNFs(obraId, pavimentoId){
     if(!obraId){setNfs([]);return}
     let q=supabase.from('nfs').select('*').eq('obra_id',obraId)
     if(pavimentoId) {
+      // Mostrar APENAS as NFs deste pavimento
       q=q.eq('pavimento_id',pavimentoId)
     } else {
-      // Sem pavimento selecionado: mostrar NFs sem vínculo OU todas (modo legado)
-      q=q.or('pavimento_id.is.null')
+      // Sem pavimento selecionado: não mostrar nada
+      setNfs([]);return
     }
     const{data}=await q.order('criado_em')
     setNfs(data||[])
